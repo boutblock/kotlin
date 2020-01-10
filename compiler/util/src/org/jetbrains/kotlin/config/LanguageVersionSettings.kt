@@ -140,7 +140,7 @@ enum class LanguageFeature(
 
     MultiPlatformProjects(sinceVersion = null, defaultState = State.DISABLED),
 
-    NewInference(sinceVersion = KOTLIN_1_3, defaultState = State.DISABLED),
+    NewInference(sinceVersion = KOTLIN_1_3, defaultState = State.ENABLED),
     // In the next block, features can be enabled only along with new inference
     BooleanElvisBoundSmartCasts(sinceVersion = KOTLIN_1_3, defaultState = State.DISABLED), // see KT-26357 for details
     SamConversionForKotlinFunctions(sinceVersion = KOTLIN_1_3, defaultState = State.DISABLED),
