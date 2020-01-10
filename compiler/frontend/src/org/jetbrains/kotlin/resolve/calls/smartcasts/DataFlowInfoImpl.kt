@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.types.checker.NewCapturedTypeConstructor
 import org.jetbrains.kotlin.types.typeUtil.contains
 import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
 import org.jetbrains.kotlin.util.javaslang.*
+import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.newLinkedHashSetWithExpectedSize
 import java.util.*
 
@@ -129,6 +130,12 @@ internal class DataFlowInfoImpl private constructor(
         types.mapTo(enrichedTypes) { type -> type.makeReallyNotNullIfNeeded(languageVersionSettings) }
         if (originalType.canBeDefinitelyNotNullOrNotNull(languageVersionSettings)) {
             enrichedTypes.add(originalType.makeReallyNotNullIfNeeded(languageVersionSettings))
+        }
+
+        if (enrichedTypes.isNotEmpty() && languageVersionSettings.supportsFeature(LanguageFeature.NewInference)) {
+            // Sometime expected type may be inferred to be an intersection of all of the smart-cast types
+            val typeToIntersect = enrichedTypes + key.type
+            enrichedTypes.addIfNotNull(TypeIntersector.intersectTypes(typeToIntersect))
         }
 
         return enrichedTypes
