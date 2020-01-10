@@ -218,14 +218,17 @@ fun IrTypeParametersContainer.copyTypeParameters(
     origin: IrDeclarationOrigin? = null
 ): List<IrTypeParameter> {
     val shift = typeParameters.size
+    val oldToNewParameterMap = mutableMapOf<IrTypeParameter, IrTypeParameter>()
     // Any type parameter can figure in a boundary type for any other parameter.
     // Therefore, we first copy the parameters themselves, then set up their supertypes.
     val newTypeParameters = srcTypeParameters.mapIndexed { i, sourceParameter ->
-        sourceParameter.copyToWithoutSuperTypes(this, index = i + shift, origin = origin ?: sourceParameter.origin)
+        sourceParameter.copyToWithoutSuperTypes(this, index = i + shift, origin = origin ?: sourceParameter.origin).also {
+                oldToNewParameterMap[sourceParameter] = it
+            }
     }
     typeParameters.addAll(newTypeParameters)
     srcTypeParameters.zip(newTypeParameters).forEach { (srcParameter, dstParameter) ->
-        dstParameter.copySuperTypesFrom(srcParameter)
+        dstParameter.copySuperTypesFrom(srcParameter, oldToNewParameterMap)
     }
     return newTypeParameters
 }
@@ -235,13 +238,12 @@ fun IrTypeParametersContainer.copyTypeParametersFrom(
     origin: IrDeclarationOrigin? = null
 ) = copyTypeParameters(source.typeParameters, origin)
 
-private fun IrTypeParameter.copySuperTypesFrom(source: IrTypeParameter) {
+private fun IrTypeParameter.copySuperTypesFrom(source: IrTypeParameter, srcToDstParameterMap: Map<IrTypeParameter, IrTypeParameter>) {
     val target = this
     val sourceParent = source.parent as IrTypeParametersContainer
     val targetParent = target.parent as IrTypeParametersContainer
-    val shift = target.index - source.index
     source.superTypes.forEach {
-        target.superTypes.add(it.remapTypeParameters(sourceParent, targetParent, shift))
+        target.superTypes.add(it.remapTypeParameters(sourceParent, targetParent, srcToDstParameterMap))
     }
 }
 
@@ -308,13 +310,19 @@ fun IrFunctionAccessExpression.passTypeArgumentsFrom(irFunction: IrTypeParameter
     Type parameters should correspond to the function where they are defined.
     `source` is where the type is originally taken from.
  */
-fun IrType.remapTypeParameters(source: IrTypeParametersContainer, target: IrTypeParametersContainer, shift: Int = 0): IrType =
+fun IrType.remapTypeParameters(
+    source: IrTypeParametersContainer,
+    target: IrTypeParametersContainer,
+    srcToDstParameterMap: Map<IrTypeParameter, IrTypeParameter>? = null
+): IrType =
     when (this) {
         is IrSimpleType -> {
             val classifier = classifier.owner
             when {
-                classifier is IrTypeParameter && classifier.parent == source ->
-                    IrSimpleTypeImpl(target.typeParameters[classifier.index + shift].symbol, hasQuestionMark, arguments, annotations)
+                classifier is IrTypeParameter && classifier.parent == source -> {
+                    val newClassifier = srcToDstParameterMap?.get(classifier) ?: target.typeParameters[classifier.index]
+                    IrSimpleTypeImpl(newClassifier.symbol, hasQuestionMark, arguments, annotations)
+                }
 
                 classifier is IrClass ->
                     IrSimpleTypeImpl(
@@ -323,7 +331,7 @@ fun IrType.remapTypeParameters(source: IrTypeParametersContainer, target: IrType
                         arguments.map {
                             when (it) {
                                 is IrTypeProjection -> makeTypeProjection(
-                                    it.type.remapTypeParameters(source, target, shift),
+                                    it.type.remapTypeParameters(source, target, srcToDstParameterMap),
                                     it.variance
                                 )
                                 else -> it
